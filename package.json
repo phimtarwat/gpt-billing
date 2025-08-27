@@ -1,1 +1,17 @@
+{
+  "name": "gpt-billing",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "stripe": "^14.0.0",
+    "googleapis": "^127.0.0"
+  }
+}
 
