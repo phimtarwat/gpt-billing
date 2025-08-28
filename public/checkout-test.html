@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <title>เลือกแพ็กเกจทดสอบ</title>
+  <title>เลือกแพ็กเกจ</title>
 </head>
 <body>
   <h2>ซื้อแพ็กเกจ</h2>
@@ -14,21 +14,19 @@
   <script>
     async function createCheckout(plan) {
       try {
-        const response = await fetch("https://gpt-billing.vercel.app/api/create-checkout", {
+        const res = await fetch("/api/create-checkout", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             plan: plan,
-            userId: "1001"   // 👈 ใส่ user_id จริง หรือ generate ใหม่ตอนสมัคร
+            userId: "1001"   // 👈 จะ fix หรือ generate ก็ได้
           })
         });
 
-        const data = await response.json();
+        const data = await res.json();
 
         if (data.url) {
-          window.location.href = data.url; // ไปที่หน้า Stripe Checkout
+          window.location.href = data.url; // เด้งไป Stripe Checkout
         } else {
           alert("Error: " + JSON.stringify(data));
         }
@@ -40,5 +38,3 @@
   </script>
 </body>
 </html>
-
-
