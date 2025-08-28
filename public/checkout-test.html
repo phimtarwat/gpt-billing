@@ -12,29 +12,30 @@
   <button onclick="createCheckout('premium')">ซื้อ Premium Plan</button>
 
   <script>
-    async function createCheckout(plan) {
-      try {
-        const res = await fetch("/api/create-checkout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            plan: plan,
-            userId: "1001"   // 👈 จะ fix หรือ generate ก็ได้
-          })
-        });
+  async function createCheckout(plan) {
+    try {
+      const res = await fetch("/api/create-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: plan,
+          user_id: "1001"   // 👈 ต้องใช้ key = user_id (ไม่ใช่ userId)
+        })
+      });
 
-        const data = await res.json();
+      const data = await res.json();
 
-        if (data.url) {
-          window.location.href = data.url; // เด้งไป Stripe Checkout
-        } else {
-          alert("Error: " + JSON.stringify(data));
-        }
-      } catch (err) {
-        console.error("Checkout error:", err);
-        alert("Request failed: " + err.message);
+      if (data.url) {
+        window.location.href = data.url; // เด้งไป Stripe Checkout
+      } else {
+        alert("Error: " + JSON.stringify(data));
       }
+    } catch (err) {
+      console.error("Checkout error:", err);
+      alert("Request failed: " + err.message);
     }
-  </script>
+  }
+</script>
+
 </body>
 </html>
