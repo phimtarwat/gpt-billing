@@ -1,35 +1,40 @@
-import { google } from "googleapis";
+import { GoogleSpreadsheet } from "google-spreadsheet";
+import { JWT } from "google-auth-library";
 
 export default async function handler(req, res) {
-  const { session_id } = req.query;
-  if (!session_id) return res.status(400).json({ error: "session_id required" });
+  if (req.method !== "GET") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const { user_id } = req.query;
 
   try {
-    const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY),
+    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+    const serviceAccountAuth = new JWT({
+      email: creds.client_email,
+      key: creds.private_key,
       scopes: ["https://www.googleapis.com/auth/spreadsheets"],
     });
-    const sheets = google.sheets({ version: "v4", auth });
 
-    const read = await sheets.spreadsheets.values.get({
-      spreadsheetId: process.env.SHEET_ID,
-      range: "Members!A:G",
-    });
+    const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByIndex[0];
+    const rows = await sheet.getRows();
 
-    const rows = read.data.values || [];
-    for (let i = 1; i < rows.length; i++) {
-      if (rows[i][6] === session_id) {
-        return res.json({
-          user_id: rows[i][0],
-          token: rows[i][1],
-          token_expiry: rows[i][2],
-          quota: rows[i][3],
-        });
-      }
+    const user = rows.find((r) => String(r.user_id) === String(user_id));
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
     }
-    res.json({});
+
+    return res.status(200).json({
+      user_id: user.user_id,
+      quota: user.quota,
+      used_count: user.used_count,
+      token_expiry: user.token_expiry,
+    });
   } catch (err) {
-    res.status(500).json({ error: "Google Sheets error" });
+    console.error("get-user error:", err);
+    return res.status(500).json({ error: "Server error", details: err.message });
   }
 }
-
