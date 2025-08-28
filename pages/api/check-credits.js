@@ -5,23 +5,20 @@ export default async function handler(req, res) {
   try {
     const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
 
-    // auth object
     const serviceAccountAuth = new JWT({
       email: creds.client_email,
       key: creds.private_key,
       scopes: ["https://www.googleapis.com/auth/spreadsheets"],
     });
 
-    // connect to Google Sheet
     const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
     await doc.loadInfo();
 
-    const sheet = doc.sheetsByIndex[0]; // เอา sheet แรก
+    const sheet = doc.sheetsByIndex[0];
     const rows = await sheet.getRows();
 
-    // ตัวอย่าง: ค้นหา user_id
     const { user_id, token } = req.query;
-    const user = rows.find((r) => r.user_id === user_id && r.token === token);
+    const user = rows.find(r => r.user_id === user_id && r.token === token);
 
     if (!user) {
       return res.status(401).json({ error: "Invalid user or token" });
