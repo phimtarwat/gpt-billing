@@ -1,22 +1,21 @@
 import Stripe from "stripe";
-import { GoogleSpreadsheet } from "google-spreadsheet";
-import { JWT } from "google-auth-library";
+import { Readable } from "stream";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export const config = {
   api: {
-    bodyParser: false, // ต้องใช้ raw body สำหรับ Stripe
+    bodyParser: false, // ต้องปิด default bodyParser ของ Next.js
   },
 };
 
-function buffer(readable) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    readable.on("data", (chunk) => chunks.push(chunk));
-    readable.on("end", () => resolve(Buffer.concat(chunks)));
-    readable.on("error", reject);
-  });
+// helper: raw body
+async function buffer(readable) {
+  const chunks = [];
+  for await (const chunk of readable) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks);
 }
 
 export default async function handler(req, res) {
@@ -24,56 +23,52 @@ export default async function handler(req, res) {
     return res.status(405).send("Method not allowed");
   }
 
-  const buf = await buffer(req);
   const sig = req.headers["stripe-signature"];
+  let event;
 
   try {
-    const event = stripe.webhooks.constructEvent(
-      buf,
+    const rawBody = await buffer(req);
+    event = stripe.webhooks.constructEvent(
+      rawBody,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
-
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
-      const userId = session.client_reference_id;
-      const plan = session.metadata.plan;
-
-      let quota = 50;
-      if (plan === "standard") quota = 200;
-      if (plan === "premium") quota = 500;
-
-      const creds = JSON.parse(
-        Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64, "base64").toString()
-      );
-
-      const serviceAccountAuth = new JWT({
-        email: creds.client_email,
-        key: creds.private_key,
-        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-      });
-
-      const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
-      await doc.loadInfo();
-      const sheet = doc.sheetsByIndex[0];
-      const rows = await sheet.getRows();
-
-      const user = rows.find(r => r.user_id === userId);
-      if (user) {
-        user.plan = plan;
-        user.status = "active";
-        user.token_expiry = new Date(new Date().setMonth(new Date().getMonth() + 1))
-          .toISOString()
-          .split("T")[0];
-        user.quota = quota;
-        user.used_count = 0;
-        await user.save();
-      }
-    }
-
-    res.json({ received: true });
   } catch (err) {
-    console.error("webhook error:", err);
-    res.status(400).send(`Webhook Error: ${err.message}`);
+    console.error("❌ Webhook signature verification failed:", err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
   }
+
+  // 👉 กรณีชำระเงินเสร็จ
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+
+    const plan = session.metadata.plan;
+    const user_id = session.metadata.user_id;
+
+    console.log("✅ Payment success:", { user_id, plan });
+
+    // กำหนด quota ตาม plan
+    let quota = 50;
+    if (plan === "standard") quota = 100;
+    if (plan === "premium") quota = 200;
+
+    // 👉 ยิงไป create-user API
+    try {
+      await fetch(`${process.env.BASE_URL}/api/create-user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id,
+          plan,
+          quota,
+          expiryDays: 30,
+        }),
+      });
+      console.log("✅ User created/updated in Google Sheet");
+    } catch (err) {
+      console.error("❌ Failed to call create-user API:", err);
+    }
+  }
+
+  res.json({ received: true });
 }
