@@ -1,10 +1,17 @@
 import Stripe from "stripe";
-import { google } from "googleapis";
+import { GoogleSpreadsheet } from "google-spreadsheet";
+import { JWT } from "google-auth-library";
 import crypto from "crypto";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-export const config = { api: { bodyParser: false } };
+export const config = {
+  api: {
+    bodyParser: false, // ❌ ต้องปิด bodyParser เพื่อให้ Stripe ตรวจลายเซ็นได้
+  },
+};
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// ฟังก์ชันช่วยอ่าน raw body
 async function buffer(readable) {
   const chunks = [];
   for await (const chunk of readable) {
@@ -13,6 +20,7 @@ async function buffer(readable) {
   return Buffer.concat(chunks);
 }
 
+// ฟังก์ชันสร้าง user_id / token ใหม่
 function generateUser() {
   const user_id = Math.floor(1000 + Math.random() * 9000);
   const token = crypto.randomBytes(8).toString("hex");
@@ -20,52 +28,67 @@ function generateUser() {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).end();
+  if (req.method !== "POST") {
+    return res.status(405).send("Method Not Allowed");
+  }
 
   const buf = await buffer(req);
   const sig = req.headers["stripe-signature"];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   let event;
+
   try {
     event = stripe.webhooks.constructEvent(buf, sig, webhookSecret);
   } catch (err) {
+    console.error("⚠️ Webhook signature verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // ✅ จัดการ event ที่เราสนใจ
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    const credits = parseInt(session.metadata.credits, 10);
-    const { user_id, token } = generateUser();
 
-    const today = new Date();
-    const expiry = new Date();
-    expiry.setDate(today.getDate() + 30);
+    try {
+      // ดึง credits จาก metadata (ใส่ตอนสร้าง checkout)
+      const plan = session.metadata.plan || "lite";
+      const credits = plan === "lite" ? 5 : plan === "standard" ? 20 : 50;
 
-    const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY),
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
-    const sheets = google.sheets({ version: "v4", auth });
+      // สร้าง user ใหม่
+      const { user_id, token } = generateUser();
+      const today = new Date();
+      const expiry = new Date();
+      expiry.setDate(today.getDate() + 30); // +30 วัน
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.SHEET_ID,
-      range: "Members!A:G",
-      valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: [[
-          user_id,
-          token,
-          expiry.toISOString().split("T")[0],
-          credits,
-          0,
-          "",
-          session.id
-        ]],
-      },
-    });
+      // เชื่อม Google Sheet
+      const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+      const serviceAccountAuth = new JWT({
+        email: creds.client_email,
+        key: creds.private_key,
+        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+      });
+
+      const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
+      await doc.loadInfo();
+      const sheet = doc.sheetsByIndex[0];
+
+      // เพิ่มแถวใหม่
+      await sheet.addRow({
+        user_id,
+        token,
+        token_expiry: expiry.toISOString().split("T")[0],
+        quota: credits,
+        used_count: 0,
+        fingerprint: "",
+        session_id: session.id,
+      });
+
+      console.log(`✅ User created in sheet: ${user_id} / ${token}`);
+    } catch (err) {
+      console.error("Google Sheets update error:", err);
+      return res.status(500).send("Failed to update Google Sheet");
+    }
   }
 
-  res.json({ received: true });
+  res.status(200).json({ received: true });
 }
-
