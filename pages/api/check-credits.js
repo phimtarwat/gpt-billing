@@ -3,7 +3,9 @@ import { JWT } from "google-auth-library";
 
 export default async function handler(req, res) {
   try {
-    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY || "{}");
+
+    console.log("Loaded creds:", Object.keys(creds)); // DEBUG
 
     const serviceAccountAuth = new JWT({
       email: creds.client_email,
@@ -12,28 +14,15 @@ export default async function handler(req, res) {
     });
 
     const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
-    await doc.loadInfo();
+    await doc.loadInfo(); // 👈 ถ้า auth ไม่ถูก จะ error ตรงนี้
 
     const sheet = doc.sheetsByIndex[0];
     const rows = await sheet.getRows();
 
-    const { user_id, token } = req.query;
-    const user = rows.find(r => r.user_id === user_id && r.token === token);
-
-    if (!user) {
-      return res.status(401).json({ error: "Invalid user or token" });
-    }
-
-    const quota = parseInt(user.quota, 10);
-    const used = parseInt(user.used_count, 10);
-
     res.status(200).json({
-      user_id: user.user_id,
-      quota,
-      used_count: used,
-      remaining: quota - used,
-      expiry: user.token_expiry,
-      valid: true,
+      ok: true,
+      totalRows: rows.length,
+      firstRow: rows[0]?._rawData || null
     });
   } catch (err) {
     console.error("Google Sheets error:", err);
