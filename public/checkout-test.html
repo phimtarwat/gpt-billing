@@ -1,1 +1,44 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>เลือกแพ็กเกจทดสอบ</title>
+</head>
+<body>
+  <h2>ซื้อแพ็กเกจ</h2>
+
+  <button onclick="createCheckout('lite')">ซื้อ Lite Plan</button>
+  <button onclick="createCheckout('standard')">ซื้อ Standard Plan</button>
+  <button onclick="createCheckout('premium')">ซื้อ Premium Plan</button>
+
+  <script>
+    async function createCheckout(plan) {
+      try {
+        const response = await fetch("https://gpt-billing.vercel.app/api/create-checkout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            plan: plan,
+            userId: "1001"   // 👈 ใส่ user_id จริง หรือ generate ใหม่ตอนสมัคร
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.url) {
+          window.location.href = data.url; // ไปที่หน้า Stripe Checkout
+        } else {
+          alert("Error: " + JSON.stringify(data));
+        }
+      } catch (err) {
+        console.error("Checkout error:", err);
+        alert("Request failed: " + err.message);
+      }
+    }
+  </script>
+</body>
+</html>
+
 
