@@ -1,5 +1,4 @@
 import { GoogleSpreadsheet } from "google-spreadsheet";
-import { JWT } from "google-auth-library";
 
 export default async function handler(req, res) {
   try {
