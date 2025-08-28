@@ -1,41 +1,37 @@
 import Stripe from "stripe";
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).end();
-
-  const { plan, email } = req.body;
-  const pricing = {
-    lite: { price: 79, credits: 5 },
-    standard: { price: 199, credits: 20 },
-    premium: { price: 399, credits: 50 },
-  };
-
-  const selected = pricing[plan];
-  if (!selected) return res.status(400).json({ error: "Invalid plan" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
   try {
+    const { user_id, plan } = req.body;
+    if (!user_id || !plan) {
+      return res.status(400).json({ error: "Missing user_id or plan" });
+    }
+
+    // กำหนดราคา (ตัวอย่าง)
+    let priceId;
+    if (plan === "lite") priceId = "price_lite_id";
+    if (plan === "standard") priceId = "price_standard_id";
+    if (plan === "premium") priceId = "price_premium_id";
+
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card", "promptpay"],
-      line_items: [
-        {
-          price_data: {
-            currency: "thb",
-            product_data: { name: `แพ็กเกจ ${plan}` },
-            unit_amount: selected.price * 100,
-          },
-          quantity: 1,
-        },
-      ],
-      mode: "payment",
-      success_url: `${req.headers.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${req.headers.origin}/cancel`,
-      metadata: { email, plan, credits: selected.credits },
+      payment_method_types: ["card"],
+      mode: "subscription",
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${process.env.BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.BASE_URL}/cancel`,
+      client_reference_id: user_id,
+      metadata: { plan },
     });
 
-    res.json({ url: session.url });
+    return res.status(200).json({ url: session.url });
   } catch (err) {
-    res.status(500).json({ error: "Stripe session creation failed" });
+    console.error("create-checkout error:", err);
+    return res.status(500).json({ error: "Server error", details: err.message });
   }
 }
-
