@@ -2,14 +2,16 @@ import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const { user_id } = req.query;
-
   try {
-    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+    const { user_id, token } = req.query;
+    if (!user_id || !token) {
+      return res.status(400).json({ error: "Missing user_id or token" });
+    }
+
+    const creds = JSON.parse(
+      Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64, "base64").toString()
+    );
+
     const serviceAccountAuth = new JWT({
       email: creds.client_email,
       key: creds.private_key,
@@ -21,17 +23,17 @@ export default async function handler(req, res) {
     const sheet = doc.sheetsByIndex[0];
     const rows = await sheet.getRows();
 
-    const user = rows.find((r) => String(r.user_id) === String(user_id));
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    const user = rows.find(r => r.user_id === user_id && r.token === token);
+    if (!user) return res.status(401).json({ error: "Invalid user_id or token" });
 
     return res.status(200).json({
-      user_id: user.user_id,
+      ok: true,
+      user_id,
+      plan: user.plan,
+      status: user.status,
       quota: user.quota,
       used_count: user.used_count,
-      token_expiry: user.token_expiry,
+      expiry: user.token_expiry,
     });
   } catch (err) {
     console.error("get-user error:", err);
