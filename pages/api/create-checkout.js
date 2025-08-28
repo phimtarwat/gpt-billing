@@ -14,7 +14,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing plan or user_id" });
     }
 
-    // 👉 ตั้งราคาแต่ละ plan (บาท)
+    // 👉 กำหนดราคา (บาท)
     let price = 0;
     if (plan === "lite") price = 99;
     if (plan === "standard") price = 199;
@@ -24,7 +24,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid plan" });
     }
 
-    // 👉 สร้าง Stripe Checkout Session
+    // 👉 ใช้ BASE_URL จาก env ถ้ามี ไม่งั้น fallback เป็น Vercel domain
+    const BASE_URL = process.env.BASE_URL || "https://gpt-billing.vercel.app";
+
+    // 👉 สร้าง Checkout Session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
@@ -34,17 +37,17 @@ export default async function handler(req, res) {
             product_data: {
               name: `AstroWise Plan - ${plan}`,
             },
-            unit_amount: price * 100, // หน่วยสตางค์
+            unit_amount: price * 100, // Stripe ใช้สตางค์
           },
           quantity: 1,
         },
       ],
       mode: "payment",
-      success_url: `${process.env.BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.BASE_URL}/cancel`,
+      success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${BASE_URL}/cancel`,
       metadata: {
-        plan,     // บอก webhook ว่าเป็น plan ไหน
-        user_id,  // บอก webhook ว่าเป็น user ไหน
+        plan,
+        user_id,
       },
     });
 
