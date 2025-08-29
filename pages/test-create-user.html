@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Test Create User</title>
+</head>
+<body>
+  <button onclick="createUser()">Create User</button>
+
+  <script>
+    async function createUser() {
+      try {
+        const res = await fetch("https://gpt-billing.vercel.app/api/create-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: "2001",
+            plan: "standard",
+            quota: 100,
+            expiryDays: 30
+          })
+        });
+
+        const data = await res.json();
+        alert(JSON.stringify(data));
+      } catch (err) {
+        alert("Error: " + err.message);
+      }
+    }
+  </script>
+</body>
+</html>
