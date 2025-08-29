@@ -14,7 +14,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing plan or user_id" });
     }
 
-    // 👉 กำหนดราคา (บาท)
+    // 👉 กำหนดราคาแต่ละแผน (บาท)
     let price = 0;
     if (plan === "lite") price = 99;
     if (plan === "standard") price = 199;
@@ -24,12 +24,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid plan" });
     }
 
-    // 👉 ใช้ BASE_URL จาก env ถ้ามี ไม่งั้น fallback เป็น Vercel domain
+    // 👉 ใช้ BASE_URL จาก env ถ้ามี ไม่งั้น fallback
     const BASE_URL = process.env.BASE_URL || "https://gpt-billing.vercel.app";
 
     // 👉 สร้าง Checkout Session
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
+      payment_method_types: ["card", "promptpay"], // ✅ รองรับทั้งบัตร & PromptPay
       line_items: [
         {
           price_data: {
@@ -37,12 +37,12 @@ export default async function handler(req, res) {
             product_data: {
               name: `AstroWise Plan - ${plan}`,
             },
-            unit_amount: price * 100, // Stripe ใช้สตางค์
+            unit_amount: price * 100, // Stripe ใช้หน่วยสตางค์
           },
           quantity: 1,
         },
       ],
-      mode: "payment",
+      mode: "payment", // ⚠️ PromptPay ใช้ได้เฉพาะ payment (one-time) ไม่รองรับ subscription
       success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${BASE_URL}/cancel`,
       metadata: {
